@@ -26,7 +26,7 @@
 </head>
 <body>
   <h2>Fast QR Scanner</h2>
-  <div id="counter">Total Scans: <b id="totalCount">0</b> • Device: <span id="deviceTag"></span></div>
+  <div id="counter">Total Scans: <b id="totalCount">0</b> </div>
 
   <div id="reader"></div>
 
@@ -59,7 +59,7 @@
    - BACKUP_INTERVAL_MS: how often to send unsynced scans to backend (3000 ms default)
 */
 const MASTER_JSON_URL = "https://raw.githubusercontent.com/arinjay03/QR_Validator/refs/heads/main/MasterQRList.json";
-const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwNQCkOOGE5fn19uhTBmzV23CbSJXwuX2TZ5-6ELsxt9I9zA6W050gE--ZoOsTC1rkB4g/exec"; // <-- REPLACE with your Apps Script URL
+const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwf6q-fSHQiV3KaK9zYuFXEAlcQNmmiIiPQ2dp3hEWziyLGgbohS4m3VSN3InbD3NbJCw/exec"; // <-- REPLACE with your Apps Script URL
 const BACKUP_INTERVAL_MS = 3000;
 
 /* ============================
@@ -247,7 +247,7 @@ async function syncToBackend(){
 
 /* helper: check GAS URL placeholder */
 function GAS_URL_OK(){
-  if(!GAS_WEBAPP_URL || GAS_WEBAPP_URL.includes('AKfycbwNQCkOOGE5fn19uhTBmzV23CbSJXwuX2TZ5-6ELsxt9I9zA6W050gE--ZoOsTC1rkB4g')){
+  if(!GAS_WEBAPP_URL || GAS_WEBAPP_URL.includes('AKfycbwf6q-fSHQiV3KaK9zYuFXEAlcQNmmiIiPQ2dp3hEWziyLGgbohS4m3VSN3InbD3NbJCw')){
     // don't attempt
     return false;
   }
@@ -349,4 +349,5 @@ document.getElementById('clearBtn').addEventListener('click', clearLocal);
 </script>
 </body>
 </html>
+
 
