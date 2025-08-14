@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8"/>
-  <title>Fast QR Scanner — GitHub JSON + Sheets backup</title>
+  <title>Fast QR Scanner</title>
 
   <!-- html5-qrcode (fast client scanning) -->
   <script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
@@ -26,7 +26,7 @@
 </head>
 <body>
   <h2>Fast QR Scanner</h2>
-  <div id="counter">Total Scans: <b id="totalCount">0</b> • Device: <span id="deviceTag"></span></div>
+  <div id="counter">Total Scans: <b id="totalCount">0</b></div>
 
   <div id="reader"></div>
 
@@ -187,7 +187,6 @@ async function handleScan(decodedText){
     setStatus('⚠️ Already scanned (local): ' + qr, 'duplicate');
     soundDup.play();
     // Optionally still add a timestamped "Already" event? we'll note it as Already and not duplicate the main entry
-    addLocalRecord(qr, 'Already');
     setTimeout(startCamera, 700);
     return;
   }
@@ -234,6 +233,7 @@ async function syncToBackend(){
       });
       if(changed){
         persistLocalRecords();
+        renderTable();
       }
     } else {
       console.warn('Backend returned unexpected response', j);
@@ -349,5 +349,6 @@ document.getElementById('clearBtn').addEventListener('click', clearLocal);
 </script>
 </body>
 </html>
+
 
 
