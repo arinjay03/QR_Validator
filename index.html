@@ -1,149 +1,351 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
 <head>
-  <title>Durga Puja QR Validator</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://unpkg.com/html5-qrcode"></script>
+  <meta charset="utf-8"/>
+  <title>Fast QR Scanner — GitHub JSON + Sheets backup</title>
+
+  <!-- html5-qrcode (fast client scanning) -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8"></script>
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background-color: #f3f3f3;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-      height: 100vh;
-      text-align: center;
-    }
-    #reader {
-      width: 90vw;
-      max-width: 500px;
-      margin-top: 20px;
-    }
-    #status {
-      margin-top: 30px;
-      font-size: 24px;
-      font-weight: bold;
-      padding: 10px 20px;
-      border-radius: 6px;
-    }
-    .success {
-      background-color: #d4edda;
-      color: #155724;
-      border: 1px solid #c3e6cb;
-    }
-    .duplicate {
-      background-color: #fff3cd;
-      color: #856404;
-      border: 1px solid #ffeeba;
-    }
-    .error {
-      background-color: #f8d7da;
-      color: #721c24;
-      border: 1px solid #f5c6cb;
-    }
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; background:#f7f9fc; color:#0b1220; padding:18px; text-align:center; }
+    #reader { width:92vw; max-width:520px; margin:14px auto; border-radius:12px; overflow:hidden; border:2px solid #e2e6ee; }
+    #status{margin-top:12px;padding:10px 14px;border-radius:10px;display:inline-block;min-width:320px;font-weight:700}
+    .success{background:#d1fae5;color:#065f46;border:1px solid #a7f3d0}
+    .error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca}
+    .duplicate{background:#fff7ed;color:#9a3412;border:1px solid #fed7aa}
+    .row{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:14px}
+    button{padding:10px 14px;border-radius:10px;border:0;background:#0b1220;color:#fff;cursor:pointer}
+    button.secondary{background:#e5e7eb;color:#0b1220}
+    #counter{font-size:18px;margin:8px 0 0}
+    .muted{color:#666;font-size:12px;margin-top:6px}
+    table { margin: 10px auto; border-collapse: collapse; width: 90%; max-width: 900px; font-size: 13px; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; text-align:left; }
+    th { background:#f0f3f7; }
   </style>
 </head>
 <body>
-  <h2>Durga Puja QR Validator</h2>
+  <h2>Fast QR Scanner</h2>
+  <div id="counter">Total Scans: <b id="totalCount">0</b> • Device: <span id="deviceTag"></span></div>
+
   <div id="reader"></div>
-  <div id="status">📷 Waiting for scan...</div>
-  
-  <!-- ✅ Sounds -->
-  <audio id="success-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
-  <audio id="error-sound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
 
-  <script>
-    // ✅ Replace with your GitHub Raw JSON URL
-    const githubRawURL = "https://raw.githubusercontent.com/arinjay03/QR_Validator/refs/heads/main/MasterQRList.json";
+  <div id="status">Initializing…</div>
 
-    // ✅ Backend logging URL
-    const backendURL = "https://script.google.com/macros/s/AKfycby--ZoCjs7D1qI3QCyATfuZDJlj2ylmjKysIWXPFV2pnCGUOWL1Jtqj6vE9_DiJvmU6Xg/exec";
+  <div class="row">
+    <button id="downloadBtn" class="secondary">⬇️ Download CSV (Local)</button>
+    <button id="showTableBtn" class="secondary">📄 Show Recent Scans</button>
+    <button id="clearBtn" class="secondary">🧹 Clear Local Scans</button>
+  </div>
 
-    const statusEl = document.getElementById("status");
-    const successSound = document.getElementById("success-sound");
-    const errorSound = document.getElementById("error-sound");
+  <div class="muted">Scanner loads masterlist once from GitHub JSON. Scans are saved locally and backed up to Google Sheets every 3s in background.</div>
 
-    let masterQRSet = new Set();
-    let scannedSet = new Set();
+  <!-- sounds -->
+  <audio id="soundValid" src="https://actions.google.com/sounds/v1/cartoon/clang_and_wobble.ogg" preload="auto"></audio>
+  <audio id="soundDup"   src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+  <audio id="soundInvalid" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg" preload="auto"></audio>
 
-    function setStatus(message, type) {
-      statusEl.textContent = message;
-      statusEl.className = "";
-      if (type) statusEl.classList.add(type);
-    }
+  <!-- Recent Scan table container -->
+  <div id="tableContainer" style="display:none;margin-top:12px"></div>
 
-    // ✅ Load Master QR List from GitHub
-    async function loadMasterQRList() {
-      try {
-        const res = await fetch(githubRawURL, { cache: "no-store" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        data.forEach(code => masterQRSet.add(code));
-        console.log("✅ Loaded", masterQRSet.size, "QRs from GitHub");
-      } catch (err) {
-        console.error("QR List Error", err);
-        setStatus("❌ Failed to load QR list", "error");
+<script>
+/* ============================
+   CONFIG - REPLACE THESE
+   ============================
+   - MASTER_JSON_URL: raw GitHub URL for your masterlist.json
+         e.g. "https://raw.githubusercontent.com/<username>/<repo>/main/data/masterlist.json"
+   - GAS_WEBAPP_URL: your Google Apps Script Web App URL (deployed as Web App, "Anyone")
+         e.g. "https://script.google.com/macros/s/AKfycbx.../exec"
+   - BACKUP_INTERVAL_MS: how often to send unsynced scans to backend (3000 ms default)
+*/
+const MASTER_JSON_URL = "https://raw.githubusercontent.com/arinjay03/QR_Validator/refs/heads/main/Master_QR_List.json";
+const GAS_WEBAPP_URL = "https://script.google.com/macros/s/AKfycbwNQCkOOGE5fn19uhTBmzV23CbSJXwuX2TZ5-6ELsxt9I9zA6W050gE--ZoOsTC1rkB4g/exec"; // <-- REPLACE with your Apps Script URL
+const BACKUP_INTERVAL_MS = 3000;
+
+/* ============================
+   GLOBAL STATE
+   ============================ */
+const deviceTag = (navigator && navigator.userAgent) ? navigator.userAgent.slice(0,40) : 'dev-'+Math.random().toString(36).slice(2,8);
+document.getElementById('deviceTag').textContent = deviceTag;
+
+const statusEl = document.getElementById('status');
+const totalEl  = document.getElementById('totalCount');
+const soundValid = document.getElementById('soundValid');
+const soundDup = document.getElementById('soundDup');
+const soundInvalid = document.getElementById('soundInvalid');
+
+let html5QrCode = null;
+let masterSet = new Set();      // allowed codes loaded from MASTER_JSON_URL
+// scannedRecords: array of { id, qr, tsISO, status, synced:Boolean, device }
+let scannedRecords = JSON.parse(localStorage.getItem('scannedRecords_v1') || "[]");
+
+/* helper to persist */
+function persistLocalRecords(){
+  localStorage.setItem('scannedRecords_v1', JSON.stringify(scannedRecords));
+}
+
+/* update UI count */
+function updateCountUI(){
+  totalEl.textContent = scannedRecords.length;
+}
+
+/* find if QR already scanned locally */
+function alreadyScannedLocally(qr){
+  return scannedRecords.some(r => r.qr === qr);
+}
+
+/* add new local record */
+function addLocalRecord(qr, status){
+  const rec = {
+    id: (Date.now() + '-' + Math.random().toString(36).slice(2,6)),
+    qr: qr,
+    tsISO: (new Date()).toISOString(),
+    status: status, // "Valid" | "Invalid" | "Already"
+    synced: false,
+    device: deviceTag
+  };
+  scannedRecords.push(rec);
+  persistLocalRecords();
+  updateCountUI();
+  return rec;
+}
+
+/* ============================
+   MASTER LIST LOADING (once)
+   ============================ */
+async function loadMasterList(){
+  setStatus('⬇️ Loading masterlist from GitHub…');
+  try{
+    const r = await fetch(MASTER_JSON_URL, {cache: "no-store"});
+    if(!r.ok) throw new Error('Failed to fetch master JSON: ' + r.status);
+    const j = await r.json();
+    // support two possibilities:
+    // 1) master JSON is an array of strings: ["QR1","QR2"...]
+    // 2) master JSON is array of objects with field `qr` or `qrCode` (we pick first)
+    if(Array.isArray(j) && j.length){
+      if(typeof j[0] === 'string'){
+        j.forEach(s => masterSet.add(String(s).trim()));
+      } else if (typeof j[0] === 'object'){
+        j.forEach(o => {
+          const c = o.qr || o.qrCode || o.code || Object.values(o)[0];
+          if(c) masterSet.add(String(c).trim());
+        });
       }
     }
+    setStatus('✅ Masterlist loaded: ' + masterSet.size + ' codes', 'success');
+  }catch(err){
+    console.error(err);
+    setStatus('❌ Masterlist load failed: ' + (err.message || err), 'error');
+  }
+}
 
-    async function logScan(qrCode) {
-      try {
-        const res = await fetch(`${backendURL}?qrCode=${encodeURIComponent(qrCode)}`);
-        const result = await res.json();
-        console.log("📡 Backend response:", result);
+/* ============================
+   SCANNER (html5-qrcode)
+   ============================ */
+async function startCamera(){
+  if(!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+  try{
+    const cameras = await Html5Qrcode.getCameras();
+    if(!cameras || cameras.length === 0) throw new Error('No camera found');
+    const back = cameras.find(c => /back|rear|environment/i.test(c.label));
+    const camId = (back && back.id) || cameras[0].id;
+    await html5QrCode.start(
+      camId,
+      { fps: 12, qrbox: { width: 300, height: 300 } },
+      (decoded) => handleScan(decoded),
+      (err) => { /* ignore scan errors */ }
+    );
+    setStatus('📷 Camera started — waiting for scan…');
+  }catch(err){
+    console.error('camera', err);
+    setStatus('❌ Camera failed — allow permission & use HTTPS', 'error');
+  }
+}
 
-        if (result.status === "success") {
-          setStatus("✅ QR Validated", "success");
-          successSound.play();
-        } else if (result.status === "duplicate") {
-          setStatus("⚠️ Already Scanned", "duplicate");
-          errorSound.play();
-        } else {
-          setStatus("❌ Invalid QR", "error");
-          errorSound.play();
+/* scan handler (fast local checks first) */
+async function handleScan(decodedText){
+  try{ await html5QrCode.stop(); } catch(_){}
+  const qr = String(decodedText).trim();
+  if(!qr){
+    setStatus('❌ Empty QR', 'error');
+    soundInvalid.play();
+    setTimeout(startCamera, 600);
+    return;
+  }
+
+  // 1) quick local master check (in-memory)
+  if(!masterSet.has(qr)){
+    setStatus('❌ Invalid QR: ' + qr, 'error');
+    soundInvalid.play();
+    addLocalRecord(qr, 'Invalid');
+    setTimeout(startCamera, 700);
+    return;
+  }
+
+  // 2) local duplicate check
+  if(alreadyScannedLocally(qr)){
+    setStatus('⚠️ Already scanned (local): ' + qr, 'duplicate');
+    soundDup.play();
+    // Optionally still add a timestamped "Already" event? we'll note it as Already and not duplicate the main entry
+    addLocalRecord(qr, 'Already');
+    setTimeout(startCamera, 700);
+    return;
+  }
+
+  // 3) valid new scan — store locally (synced: false) and notify UI quickly
+  const rec = addLocalRecord(qr, 'Valid');
+  setStatus('✅ Scanned (valid): ' + qr, 'success');
+  soundValid.play();
+
+  // restart camera quickly
+  setTimeout(startCamera, 400);
+}
+
+/* ============================
+   BACKGROUND SYNC to Google Sheets via Apps Script
+   - Sends only unsynced records every BACKUP_INTERVAL_MS
+   - Marks records as synced on success
+   ============================ */
+let isSyncInProgress = false;
+async function syncToBackend(){
+  if(!GAS_URL_OK()) return; // don't attempt until GAS URL is set
+  if(isSyncInProgress) return;
+  const unsynced = scannedRecords.filter(r => !r.synced);
+  if(unsynced.length === 0) return;
+  isSyncInProgress = true;
+  try{
+    const payload = { device: deviceTag, records: unsynced };
+    const res = await fetch(GAS_WEBAPP_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const j = await res.json();
+    if(j && j.status === 'ok' && Array.isArray(j.ids)){
+      // j.ids contains ids of records accepted by backend; mark them as synced
+      const accepted = new Set(j.ids);
+      let changed = false;
+      scannedRecords = scannedRecords.map(r => {
+        if(!r.synced && accepted.has(r.id)){
+          r.synced = true;
+          changed = true;
         }
-      } catch (err) {
-        console.error("❌ Error submitting scan:", err);
-        setStatus("❌ Error submitting scan", "error");
-        errorSound.play();
+        return r;
+      });
+      if(changed){
+        persistLocalRecords();
       }
+    } else {
+      console.warn('Backend returned unexpected response', j);
     }
+  }catch(err){
+    console.warn('Sync failed', err);
+  } finally {
+    isSyncInProgress = false;
+  }
+}
 
-    async function handleScan(qrCode, scanner) {
-      await scanner.stop();
-      
-      // ✅ Local validation before backend call
-      if (!masterQRSet.has(qrCode)) {
-        setStatus("❌ Invalid QR", "error");
-        errorSound.play();
-        setTimeout(() => restartScanner(scanner), 1500);
-        return;
-      }
+/* helper: check GAS URL placeholder */
+function GAS_URL_OK(){
+  if(!GAS_WEBAPP_URL || GAS_WEBAPP_URL.includes('AKfycbwNQCkOOGE5fn19uhTBmzV23CbSJXwuX2TZ5-6ELsxt9I9zA6W050gE--ZoOsTC1rkB4g')){
+    // don't attempt
+    return false;
+  }
+  return true;
+}
 
-      await logScan(qrCode);
-      setTimeout(() => restartScanner(scanner), 1500);
+/* start periodic sync */
+setInterval(() => {
+  syncToBackend();
+}, BACKUP_INTERVAL_MS);
+
+/* ============================
+   CSV Download (from local records)
+   ============================ */
+function downloadLocalCSV(){
+  if(scannedRecords.length === 0){ alert('No scans yet'); return; }
+  const rows = [['Timestamp','QR Code','Status','Device','Synced']];
+  scannedRecords.forEach(r => rows.push([r.tsISO, r.qr, r.status, r.device || '', r.synced ? 'yes' : 'no']));
+  const csv = rows.map(r => r.map(c => `"${String(c||'').replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `scanned_local_${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+/* ============================
+   UI: show recent scans table
+   ============================ */
+function renderTable(){
+  const container = document.getElementById('tableContainer');
+  if(container.style.display === 'none'){
+    // show
+    container.style.display = 'block';
+    if(scannedRecords.length === 0){
+      container.innerHTML = '<p>No scans yet.</p>';
+      return;
     }
+    const rows = scannedRecords.slice().reverse().slice(0,200) // show latest 200
+      .map(r => `<tr><td>${r.tsISO}</td><td>${r.qr}</td><td>${r.status}</td><td>${r.device||''}</td><td>${r.synced? 'yes':'no'}</td></tr>`)
+      .join('');
+    container.innerHTML = `<table><thead><tr><th>Timestamp</th><th>QR Code</th><th>Status</th><th>Device</th><th>Synced</th></tr></thead><tbody>${rows}</tbody></table>`;
+  } else {
+    container.style.display = 'none';
+  }
+}
 
-    function restartScanner(scanner) {
-      setStatus("📷 Waiting for scan...", "");
-      scanner.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 300, height: 300 } },
-        (code) => handleScan(code, scanner),
-        err => console.warn("Scan error:", err)
-      );
-    }
+/* ============================
+   Clear local scans (keeps backend intact)
+   ============================ */
+function clearLocal(){
+  if(!confirm('Clear local scanned records? This will NOT remove entries already backed up to Google Sheets.')) return;
+  scannedRecords = [];
+  persistLocalRecords();
+  updateCountUI();
+  setStatus('Local scanned records cleared.');
+}
 
-    async function startScanner() {
-      await loadMasterQRList();
-      const scanner = new Html5Qrcode("reader");
-      restartScanner(scanner);
-    }
+/* ============================
+   Small helpers
+   ============================ */
+function setStatus(msg, cls){
+  statusEl.textContent = msg;
+  statusEl.className = '';
+  if(cls) statusEl.classList.add(cls);
+}
 
-    window.onload = startScanner;
-  </script>
+/* ============================
+   Boot flow
+   ============================ */
+(async function boot(){
+  try{
+    setStatus('⚙️ Loading master list…');
+    await loadMasterList();
+
+    // Update UI from local
+    updateCountUI();
+
+    // Start camera
+    await startCamera();
+
+    // kick off an initial sync attempt (if GAS URL set)
+    setTimeout(syncToBackend, 1200);
+  }catch(e){
+    console.error('Boot failed', e);
+    setStatus('❌ Boot failed: ' + (e.message || e), 'error');
+  }
+})();
+
+/* ============================
+   UI bindings
+   ============================ */
+document.getElementById('downloadBtn').addEventListener('click', downloadLocalCSV);
+document.getElementById('showTableBtn').addEventListener('click', renderTable);
+document.getElementById('clearBtn').addEventListener('click', clearLocal);
+
+</script>
 </body>
 </html>
-
