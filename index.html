@@ -2,6 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8"/>
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fast QR Scanner — Git</title>
 
   <!-- html5-qrcode (fast client scanning) -->
@@ -65,7 +66,14 @@ const BACKUP_INTERVAL_MS = 3000;
 /* ============================
    GLOBAL STATE
    ============================ */
-const deviceTag = (navigator && navigator.userAgent) ? navigator.userAgent.slice(0,40) : 'dev-'+Math.random().toString(36).slice(2,8);
+let deviceTag = prompt("Enter a name for this device/handset:", "Device-1");
+
+// If user cancels or leaves blank, fallback to random ID
+if(!deviceTag || deviceTag.trim() === ""){
+    deviceTag = 'dev-' + Math.random().toString(36).slice(2,8);
+}
+
+// Update the UI
 document.getElementById('deviceTag').textContent = deviceTag;
 
 const statusEl = document.getElementById('status');
@@ -177,7 +185,7 @@ async function handleScan(decodedText){
   if(!masterSet.has(qr)){
     setStatus('❌ Invalid QR: ' + qr, 'error');
     soundInvalid.play();
-    addLocalRecord(qr, 'Invalid');
+    
     setTimeout(startCamera, 700);
     return;
   }
@@ -349,6 +357,7 @@ document.getElementById('clearBtn').addEventListener('click', clearLocal);
 </script>
 </body>
 </html>
+
 
 
 
